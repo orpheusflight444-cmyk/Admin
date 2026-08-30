@@ -14,7 +14,7 @@ st.set_page_config(
 # --- AUTHORIZED TEAM CREDENTIALS ---
 # Define authorized team members and their passwords here
 TEAM_ACCESS_KEYS = {
-    "Admin": "Orpheusflight",
+    "Admin": "Orpheusflight04",
     "cindy": "corazamoreno1201",
     "Sarah": "SarahSecret456"
 }
