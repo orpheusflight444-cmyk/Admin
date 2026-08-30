@@ -69,13 +69,20 @@ if not st.session_state.is_authenticated:
                 st.rerun()
             else:
                 st.error("❌ Access Denied: Invalid Username or Passkey")
+        
+        # --- NEW: CREATE ACCOUNT & FORGOT PASSWORD LINKS ---
+        st.markdown("""
+            <div style="display: flex; justify-content: space-between; margin-top: 15px; font-size: 14px;">
+                <a href="#" onclick="alert('Please contact the Admin to reset your password.')" style="color: #38bdf8; text-decoration: none;">Forgot my password?</a>
+                <a href="#" onclick="alert('Account creation is restricted to authorized team members only.')" style="color: #38bdf8; text-decoration: none;">Create account</a>
+            </div>
+        """, unsafe_allow_html=True)
     st.stop()
 
 
 # --- AI ENGINE ---
 class OrpheusCommanderEngine:
     def __init__(self):
-        # FIXED: Removed hardcoded API key for GitHub security.
         try:
             self.api_key = st.secrets["GEMINI_API_KEY"]
         except Exception:
@@ -87,7 +94,6 @@ class OrpheusCommanderEngine:
         )
         self.model = "gemini-3.6-flash"
         
-        # FIXED: Acknowledged and embedded your specific requirements into the AI's brain.
         self.core_persona = (
             "You are an elite Executive Virtual Assistant for Orpheus Commander Hub. "
             "You have proven experience in a similar administrative or support role. "
@@ -130,6 +136,10 @@ class OrpheusCommanderEngine:
     def social_post(self, topic, platform, points):
         return self._call_ai(f"Create a post for {platform}.", f"Topic: {topic}\nPoints: {points}", 0.7)
 
+    # --- NEW: AI WEBSITE BUILDER RESTORED ---
+    def build_website(self, purpose, features):
+        return self._call_ai("Generate a comprehensive website structure, layout concepts, and content outline.", f"Purpose: {purpose}\nFeatures needed: {features}", 0.7)
+
 
 # --- MAIN APP UI ---
 st.title("⚡ Orpheus Commander Hub")
@@ -154,7 +164,8 @@ task_selection = st.sidebar.radio(
         "📊 Data Entry & Record Keeping", 
         "📈 Prepare Reports & Presentations",
         "⚙️ Administrative Team Support",
-        "📱 Create Social Media Post"
+        "📱 Create Social Media Post",
+        "🌐 AI Website Builder"  # RESTORED HERE
     )
 )
 
@@ -202,3 +213,11 @@ elif task_selection == "📱 Create Social Media Post":
     points = st.text_area("Details:", height=100)
     if st.button("Generate Post"):
         st.text_area("Output:", bot.social_post(topic, platform, points), height=200)
+
+# --- NEW: AI WEBSITE BUILDER VIEW RESTORED ---
+elif task_selection == "🌐 AI Website Builder":
+    st.header("🌐 AI Website Builder")
+    purpose = st.text_input("Website Purpose / Niche:")
+    features = st.text_area("Key Features (e.g., login, contact form, gallery):", height=100)
+    if st.button("Generate Website Blueprint"):
+        st.text_area("Website Plan & Code Outline:", bot.build_website(purpose, features), height=350)
