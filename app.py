@@ -2,7 +2,7 @@ import os
 import hashlib
 import streamlit as st
 from datetime import datetime
-from openai import OpenAI
+import google.generativeai as genai
 
 # ==============================================================================
 # 1. PAGE CONFIGURATION
@@ -183,27 +183,24 @@ if not st.session_state.is_authenticated:
     st.stop()
 
 # ==============================================================================
-# 5. RESILIENT AI ENGINE (WITH MULTI-MODEL FALLBACK ENGINE)
+# 5. RESILIENT AI ENGINE (NATIVE GOOGLE SDK)
 # ==============================================================================
 class OrpheusCommanderEngine:
     def __init__(self):
         # Resolve API Key securely
         try:
-            self.api_key = st.secrets["GEMINI_API_KEY"]
+            self.api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
         except Exception:
             self.api_key = os.getenv("GEMINI_API_KEY", "")
 
-        # Initialize OpenAI Client against Gemini Endpoint
-        self.client = OpenAI(
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            api_key=self.api_key if self.api_key else "DUMMY_KEY"
-        )
+        # Configure the native Google SDK
+        if self.api_key and self.api_key != "DUMMY_KEY":
+            genai.configure(api_key=self.api_key)
         
         # Priority cascade sequence for automatic dynamic fallback
         self.model_candidates = [
-            "gemini-2.5-flash",
-            "gemini-2.0-flash",
             "gemini-1.5-flash",
+            "gemini-1.5-flash-latest",
             "gemini-1.5-pro"
         ]
         
@@ -214,31 +211,28 @@ class OrpheusCommanderEngine:
         )
 
     def _call_ai(self, sys_p: str, usr_p: str, temp: float = 0.5) -> str:
-        """Executes API call with fallback cascade across models if an endpoint fails (e.g., 404)."""
         if not self.api_key or self.api_key == "DUMMY_KEY":
             return "⚠️ GEMINI_API_KEY is missing. Please configure it in .streamlit/secrets.toml or as an Environment Variable."
 
         if not usr_p or not usr_p.strip():
             return "⚠️ Input text cannot be empty."
 
+        # Combine system instructions and user request safely
+        full_prompt = f"SYSTEM INSTRUCTION:\n{self.core_persona}\n{sys_p}\n\nUSER REQUEST:\n{usr_p}"
         last_error = None
 
         # Fallback Loop
-        for model_name in self.model_candidates:
+        for m_name in self.model_candidates:
             try:
-                res = self.client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {"role": "system", "content": f"{self.core_persona}\n{sys_p}"},
-                        {"role": "user", "content": usr_p}
-                    ],
-                    temperature=temp
+                model = genai.GenerativeModel(model_name=m_name)
+                response = model.generate_content(
+                    full_prompt,
+                    generation_config=genai.GenerationConfig(temperature=temp)
                 )
                 st.session_state.task_count += 1
-                return res.choices[0].message.content
+                return response.text
             except Exception as e:
                 last_error = e
-                # Fallback to next model string on failure (e.g., 404 Not Found)
                 continue
 
         return f"❌ All AI model fallbacks failed. Final Error: {str(last_error)}"
