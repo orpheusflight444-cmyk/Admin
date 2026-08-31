@@ -12,40 +12,62 @@ st.set_page_config(
 )
 
 # --- AUTHORIZED TEAM CREDENTIALS ---
-# Define authorized team members and their passwords here
 TEAM_ACCESS_KEYS = {
     "Admin": "Orpheusflight04",
     "cindy": "corazamoreno1201",
     "Sarah": "SarahSecret456"
 }
 
-# --- SESSION STATE FOR AUTHENTICATION ---
+# --- SESSION STATE FOR AUTHENTICATION & DATA ---
 if 'is_authenticated' not in st.session_state:
     st.session_state.is_authenticated = False
 if 'user_role' not in st.session_state:
     st.session_state.user_role = None
 if 'task_count' not in st.session_state:
     st.session_state.task_count = 0
+if 'last_blueprint' not in st.session_state:
+    st.session_state.last_blueprint = None
 
-# --- CUSTOM GLASSMORPHISM STYLING ---
+# --- CUSTOM GLASSMORPHISM STYLING (OBSIDIAN & NEON CYAN) ---
 st.markdown("""
     <style>
-    .stApp { background: linear-gradient(135deg, #090d16 0%, #1e1b4b 100%); color: #f8fafc; }
+    /* Deep obsidian gradient background */
+    .stApp { background: linear-gradient(135deg, #02040a 0%, #0a0f1c 100%); color: #f8fafc; }
     h1, h2, h3, h4, h5, h6, p, span, label { color: #f8fafc !important; }
+    
+    /* Neon cyan accented inputs */
     div.stTextArea textarea, div.stTextInput input, div.stSelectbox select {
-        background-color: rgba(15, 23, 42, 0.8) !important;
+        background-color: rgba(10, 15, 28, 0.7) !important;
         color: white !important;
         border-radius: 8px;
-        border: 1px solid rgba(56, 189, 248, 0.3);
+        border: 1px solid rgba(56, 189, 248, 0.5);
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.1);
+        transition: all 0.3s ease;
     }
+    div.stTextArea textarea:focus, div.stTextInput input:focus {
+        border-color: #38bdf8 !important;
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+    }
+    
+    /* Sleek Sidebar */
     section[data-testid="stSidebar"] {
-        background-color: #050811;
-        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        background-color: rgba(3, 6, 13, 0.95);
+        border-right: 1px solid rgba(56, 189, 248, 0.3);
     }
+    
+    /* High-contrast CTA Buttons */
     .stButton>button {
-        background: linear-gradient(45deg, #0284c7, #38bdf8); color: white; border-radius: 10px;
-        border: none; font-weight: 700; width: 100%; transition: all 0.3s ease;
+        background: linear-gradient(45deg, #0ea5e9, #38bdf8); color: #02040a; border-radius: 10px;
+        border: none; font-weight: 800; width: 100%; transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(56, 189, 248, 0.2);
     }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(56, 189, 248, 0.5);
+        color: #02040a;
+    }
+    
+    /* Hide default header */
     header[data-testid="stHeader"] { display: none !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -70,7 +92,6 @@ if not st.session_state.is_authenticated:
             else:
                 st.error("❌ Access Denied: Invalid Username or Passkey")
         
-        # --- NEW: CREATE ACCOUNT & FORGOT PASSWORD LINKS ---
         st.markdown("""
             <div style="display: flex; justify-content: space-between; margin-top: 15px; font-size: 14px;">
                 <a href="#" onclick="alert('Please contact the Admin to reset your password.')" style="color: #38bdf8; text-decoration: none;">Forgot my password?</a>
@@ -136,9 +157,22 @@ class OrpheusCommanderEngine:
     def social_post(self, topic, platform, points):
         return self._call_ai(f"Create a post for {platform}.", f"Topic: {topic}\nPoints: {points}", 0.7)
 
-    # --- NEW: AI WEBSITE BUILDER RESTORED ---
+    # --- UPGRADED: AI WEBSITE BUILDER WITH BLUEPRINT INJECTION ---
     def build_website(self, purpose, features):
-        return self._call_ai("Generate a comprehensive website structure, layout concepts, and content outline.", f"Purpose: {purpose}\nFeatures needed: {features}", 0.7)
+        system_context = (
+            "\n\nCRITICAL BRAND CONTEXT - ORPHEUS HUB (2026 ERA):\n"
+            "Positioning: 'The Evolution of Work: Human Command Meets Autonomous AI.'\n"
+            "Core Services: Executive Support, Data & Operations, Customer Experience, Content & Growth.\n"
+            "Value Proposition: Cost Reduction (zero physical overhead), Flexibility (dynamic scaling), "
+            "Global Talent Access, and Rapid ROI.\n"
+            "Constraint: Ensure the generated website blueprint strictly aligns with this messaging hierarchy, "
+            "using high-converting SaaS copy structures."
+        )
+        return self._call_ai(
+            "Generate a comprehensive website structure, layout concepts, and content outline." + system_context, 
+            f"Purpose: {purpose}\nFeatures needed: {features}", 
+            0.7
+        )
 
 
 # --- MAIN APP UI ---
@@ -165,7 +199,7 @@ task_selection = st.sidebar.radio(
         "📈 Prepare Reports & Presentations",
         "⚙️ Administrative Team Support",
         "📱 Create Social Media Post",
-        "🌐 AI Website Builder"  # RESTORED HERE
+        "🌐 AI Website Builder" 
     )
 )
 
@@ -214,10 +248,23 @@ elif task_selection == "📱 Create Social Media Post":
     if st.button("Generate Post"):
         st.text_area("Output:", bot.social_post(topic, platform, points), height=200)
 
-# --- NEW: AI WEBSITE BUILDER VIEW RESTORED ---
+# --- UPGRADED: AI WEBSITE BUILDER VIEW WITH EXPORT ---
 elif task_selection == "🌐 AI Website Builder":
     st.header("🌐 AI Website Builder")
     purpose = st.text_input("Website Purpose / Niche:")
     features = st.text_area("Key Features (e.g., login, contact form, gallery):", height=100)
+    
     if st.button("Generate Website Blueprint"):
-        st.text_area("Website Plan & Code Outline:", bot.build_website(purpose, features), height=350)
+        with st.spinner("Commanding AI to generate blueprint..."):
+            st.session_state.last_blueprint = bot.build_website(purpose, features)
+            
+    if st.session_state.last_blueprint:
+        st.text_area("Website Plan & Code Outline:", st.session_state.last_blueprint, height=350)
+        
+        # Markdown Export Button
+        st.download_button(
+            label="📥 Export Blueprint (.md)",
+            data=st.session_state.last_blueprint,
+            file_name=f"Orpheus_Blueprint_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
+            mime="text/markdown"
+        )
