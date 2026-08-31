@@ -1,4 +1,2 @@
 streamlit
-openai
-streamlit-authenticator
-PyYAML
+google-generativeai
