@@ -1,5 +1,5 @@
 import os
-import time
+import hashlib
 import streamlit as st
 from datetime import datetime
 from openai import OpenAI
@@ -12,26 +12,38 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# --- SECURITY HELPER FUNCTIONS ---
+def hash_password(password):
+    """Converts a plain text password into a secure SHA-256 hash."""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# Secret code required to create a new account
+INVITE_CODE = "ORPHEUS-SECURE-2026"
+
 # --- SESSION STATE FOR AUTHENTICATION & DATA ---
 if 'is_authenticated' not in st.session_state:
     st.session_state.is_authenticated = False
 if 'user_role' not in st.session_state:
     st.session_state.user_role = None
-if 'task_count' not in st.session_state:
-    st.session_state.task_count = 0
-if 'last_blueprint' not in st.session_state:
-    st.session_state.last_blueprint = None
-if 'last_report' not in st.session_state:
-    st.session_state.last_report = None
 if 'auth_mode' not in st.session_state:
     st.session_state.auth_mode = "login"
+if 'task_count' not in st.session_state:
+    st.session_state.task_count = 0
+if 'last_report' not in st.session_state:
+    st.session_state.last_report = None
 
-# Dynamic Authorized Team Credentials
+# Security Tracking States
+if 'failed_attempts' not in st.session_state:
+    st.session_state.failed_attempts = {} # Tracks failed logins per username
+if 'is_banned' not in st.session_state:
+    st.session_state.is_banned = False # Global session ban for honeypot triggers
+
+# Dynamic Authorized Team Credentials (Hashed)
 if 'team_keys' not in st.session_state:
     st.session_state.team_keys = {
-        "Admin": "Orpheusflight04",
-        "cindy": "corazamoreno1201",
-        "Sarah": "SarahSecret456"
+        "Admin": hash_password("Orpheusflight04"),
+        "cindy": hash_password("corazamoreno1201"),
+        "Sarah": hash_password("SarahSecret456")
     }
 
 # --- CUSTOM GLASSMORPHISM STYLING ---
@@ -76,6 +88,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# --- SECURITY GATE: HONEYPOT BAN CHECK ---
+if st.session_state.is_banned:
+    st.error("🚨 MALICIOUS ACTIVITY DETECTED. Your IP and session have been logged and permanently banned from this server.")
+    st.stop()
+
+
 # --- LOGIN SCREEN GATE ---
 if not st.session_state.is_authenticated:
     st.title("🔒 Orpheus Commander Hub")
@@ -89,13 +107,26 @@ if not st.session_state.is_authenticated:
             passkey = st.text_input("Enter Passkey", type="password", key="login_pass")
             
             if st.button("Unlock System"):
-                if user_name in st.session_state.team_keys and st.session_state.team_keys[user_name] == passkey:
-                    st.session_state.is_authenticated = True
-                    st.session_state.user_role = user_name
-                    st.success(f"Access granted. Welcome, {user_name}!")
+                # TRAP 1: The Honeypot
+                if user_name == "root_admin":
+                    st.session_state.is_banned = True
                     st.rerun()
+
+                # TRAP 2: Lockout Check
+                attempts = st.session_state.failed_attempts.get(user_name, 0)
+                if attempts >= 3:
+                    st.error("❌ Account locked due to too many failed attempts. Contact Admin.")
                 else:
-                    st.error("❌ Access Denied: Invalid Username or Passkey")
+                    # Authenticate using hashes (Instant login, no delays)
+                    if user_name in st.session_state.team_keys and st.session_state.team_keys[user_name] == hash_password(passkey):
+                        st.session_state.is_authenticated = True
+                        st.session_state.user_role = user_name
+                        st.session_state.failed_attempts[user_name] = 0 # Reset attempts
+                        st.rerun()
+                    else:
+                        if user_name: # Only log attempt if they typed a username
+                            st.session_state.failed_attempts[user_name] = attempts + 1
+                        st.error(f"❌ Access Denied. Attempts remaining: {3 - (attempts + 1)}")
             
             sub_col1, sub_col2 = st.columns(2)
             with sub_col1:
@@ -110,22 +141,24 @@ if not st.session_state.is_authenticated:
         # CREATE ACCOUNT MODE
         elif st.session_state.auth_mode == "create":
             st.subheader("Create New Account")
+            invite = st.text_input("Admin Invite Code", type="password")
             new_user = st.text_input("New Username")
             new_pass = st.text_input("New Passkey", type="password")
             confirm_pass = st.text_input("Confirm Passkey", type="password")
             
             if st.button("Register Account"):
-                if not new_user or not new_pass:
+                if invite != INVITE_CODE:
+                    st.error("❌ Invalid Invite Code. Registration blocked.")
+                elif not new_user or not new_pass:
                     st.warning("Please fill out all fields.")
                 elif new_pass != confirm_pass:
                     st.error("Passwords do not match.")
                 elif new_user in st.session_state.team_keys:
                     st.error("Username already exists.")
                 else:
-                    st.session_state.team_keys[new_user] = new_pass
-                    st.success("Account successfully created! You can now log in.")
+                    st.session_state.team_keys[new_user] = hash_password(new_pass)
                     st.session_state.auth_mode = "login"
-                    st.rerun()
+                    st.rerun() # Instant redirect back to login
                     
             if st.button("← Back to Login"):
                 st.session_state.auth_mode = "login"
@@ -137,10 +170,7 @@ if not st.session_state.is_authenticated:
             recover_user = st.text_input("Enter your Username")
             
             if st.button("Recover Passkey"):
-                if recover_user in st.session_state.team_keys:
-                    st.info(f"System verified. Your recovered passkey is: **{st.session_state.team_keys[recover_user]}**")
-                else:
-                    st.error("Username not found in our records.")
+                st.info("If that username exists in our system, a secure recovery protocol has been initiated with the system administrator.")
                     
             if st.button("← Back to Login"):
                 st.session_state.auth_mode = "login"
@@ -149,7 +179,8 @@ if not st.session_state.is_authenticated:
     st.stop()
 
 
-# --- AI ENGINE ---
+# --- AI ENGINE CACHING ---
+# Using @st.cache_resource prevents Streamlit from re-initializing the OpenAI client on every UI click
 class OrpheusCommanderEngine:
     def __init__(self):
         try:
@@ -207,27 +238,23 @@ class OrpheusCommanderEngine:
     def build_website(self, specs):
         return self._call_ai("Act as an expert Full-Stack Web Developer. Generate clean, responsive HTML, CSS, and JS based on the user's request. Output the complete code clearly.", f"Website Specifications:\n{specs}", 0.5)
 
+@st.cache_resource
+def get_ai_engine():
+    return OrpheusCommanderEngine()
 
-# --- UI HELPER: COUNTDOWN & SPINNER ---
-def run_with_timer(task_name, action_func, *args):
-    """Provides a 3-second countdown and a loading spinner so the user knows it isn't frozen."""
-    placeholder = st.empty()
-    # 3-second countdown
-    for i in range(3, 0, -1):
-        placeholder.info(f"⏳ Initiating {task_name}... Please wait {i} seconds.")
-        time.sleep(1)
-    placeholder.empty()
-    
-    # Run the actual AI function while showing a spinner
-    with st.spinner(f"⚡ Processing {task_name}... Waiting for AI response."):
+bot = get_ai_engine()
+
+
+# --- UI HELPER: FAST SPINNER (NO DELAYS) ---
+def execute_ai_task(task_name, action_func, *args):
+    """Instantly executes the AI function with a visual spinner, no artificial countdowns."""
+    with st.spinner(f"⚡ Processing {task_name}..."):
         return action_func(*args)
 
 
 # --- MAIN APP UI ---
 st.title("⚡ Orpheus Commander Hub")
 st.markdown(f"Logged in as: **{st.session_state.user_role}**")
-
-bot = OrpheusCommanderEngine()
 
 # Sidebar Navigation
 st.sidebar.title("⚡ Orpheus Hub")
@@ -249,7 +276,7 @@ task_selection = st.sidebar.radio(
         "⚙️ Administrative Team Support",
         "🧠 Strategic Brainstorming",       
         "💻 Code Generation & Debugging",
-        "🌐 Website Builder"   # Added back the Website Builder
+        "🌐 Website Builder"   
     )
 )
 
@@ -260,7 +287,7 @@ if task_selection == "✉️ Handle Communications":
     raw_msg = st.text_area("Message:", height=150)
     tone = st.selectbox("Tone", ["Professional", "Friendly", "Firm", "Empathetic"])
     if st.button("Generate Reply"):
-        result = run_with_timer("Communications", bot.draft_email, context, raw_msg, tone)
+        result = execute_ai_task("Communications", bot.draft_email, context, raw_msg, tone)
         st.text_area("Output:", result, height=250)
 
 elif task_selection == "🗓️ Manage Schedules & Meetings":
@@ -268,14 +295,14 @@ elif task_selection == "🗓️ Manage Schedules & Meetings":
     target_date = st.date_input("Select Date", datetime.today())
     raw_notes = st.text_area("Notes/Tasks:", height=150)
     if st.button("Organize Schedule"):
-        result = run_with_timer("Schedule Organizer", bot.organize_schedule, target_date.strftime("%B %d, %Y"), raw_notes)
+        result = execute_ai_task("Schedule Organizer", bot.organize_schedule, target_date.strftime("%B %d, %Y"), raw_notes)
         st.markdown(result)
 
 elif task_selection == "📊 Data Entry & Record Keeping":
     st.header("📊 Data Entry")
     notes = st.text_area("Unstructured notes:", height=200)
     if st.button("Format Data"):
-        result = run_with_timer("Data Formatting", bot.structure_data, notes)
+        result = execute_ai_task("Data Formatting", bot.structure_data, notes)
         st.markdown(result)
 
 elif task_selection == "📈 Prepare Reports & Presentations":
@@ -285,7 +312,7 @@ elif task_selection == "📈 Prepare Reports & Presentations":
     raw_data = st.text_area("Data/Metrics/Context:", height=200)
     
     if st.button("Generate Document"):
-        st.session_state.last_report = run_with_timer("Document Generation", bot.prepare_report, topic, raw_data, format_type)
+        st.session_state.last_report = execute_ai_task("Document Generation", bot.prepare_report, topic, raw_data, format_type)
             
     if st.session_state.last_report:
         st.text_area("Preview Output:", st.session_state.last_report, height=300)
@@ -303,7 +330,7 @@ elif task_selection == "⚙️ Administrative Team Support":
     st.header("⚙️ Team Administrative Support")
     task_desc = st.text_area("Task Description:", height=150)
     if st.button("Execute Task"):
-        result = run_with_timer("Admin Task", bot.admin_support, task_desc)
+        result = execute_ai_task("Admin Task", bot.admin_support, task_desc)
         st.text_area("Output:", result, height=250)
 
 elif task_selection == "🧠 Strategic Brainstorming":
@@ -311,7 +338,7 @@ elif task_selection == "🧠 Strategic Brainstorming":
     topic = st.text_input("Core Topic / Problem")
     goals = st.text_area("Desired Outcomes & Goals:", height=100)
     if st.button("Initiate Brainstorm"):
-        result = run_with_timer("Brainstorming Session", bot.brainstorm, topic, goals)
+        result = execute_ai_task("Brainstorming Session", bot.brainstorm, topic, goals)
         st.markdown(result)
 
 elif task_selection == "💻 Code Generation & Debugging":
@@ -319,12 +346,12 @@ elif task_selection == "💻 Code Generation & Debugging":
     language = st.selectbox("Programming Language", ["Python", "JavaScript", "HTML/CSS", "SQL", "Bash"])
     requirements = st.text_area("Task or Bug Details:", height=150)
     if st.button("Generate Code"):
-        result = run_with_timer("Code Generation", bot.write_code, language, requirements)
+        result = execute_ai_task("Code Generation", bot.write_code, language, requirements)
         st.markdown(result)
 
 elif task_selection == "🌐 Website Builder":
     st.header("🌐 Website Builder")
     specs = st.text_area("Website Specifications & Features:", height=150)
     if st.button("Generate Website"):
-        result = run_with_timer("Website Build", bot.build_website, specs)
+        result = execute_ai_task("Website Build", bot.build_website, specs)
         st.markdown(result)
