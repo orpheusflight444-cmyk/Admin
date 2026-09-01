@@ -198,7 +198,7 @@ class OrpheusCommanderEngine:
             genai.configure(api_key=self.api_key)
         
         # Priority cascade sequence for automatic dynamic fallback
-        self.model_candidates = ["gemini-1.5-flash", "gemini-1.5-pro-latest"]
+        self.model_candidates = ["gemini-1.5-flash", "gemini-1.5-pro"]
         
         
         self.core_persona = (
