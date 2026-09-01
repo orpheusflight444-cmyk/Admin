@@ -198,9 +198,9 @@ class OrpheusCommanderEngine:
             genai.configure(api_key=self.api_key)
         
         # Priority cascade sequence for automatic dynamic fallback
-        self.model_candidates = ["gemini-1.5-flash", "gemini-1.5-pro"]
-        
-        
+        self.model_candidates = ["gemini-1.5-flash-002", "gemini-1.5-pro-002", "gemini-pro"]
+       
+
         self.core_persona = (
             "You are an elite, highly responsible Executive Virtual Assistant for Orpheus Commander Hub. "
             "You provide detailed, clear, liability-conscious, and accurate administrative outputs. "
